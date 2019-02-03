@@ -37,41 +37,53 @@
   [t v]
   (when (= t 'clojush/individual) v))
 
-  (defn make-pop-agents
-    "Makes the population of agents containing the initial random individuals in the population.
-     Argument is a push argmap"
-    [{:keys [use-single-thread population-size
-             max-genome-size-in-initial-program atom-generators genome-representation initial-population-file]
-      :as argmap}]
-    (if (nil? initial-population-file)
-      (let [population-agents (vec (repeatedly population-size
-                                               #(make-individual
-                                                 :genome (case genome-representation
-                                                           :plush (strip-random-insertion-flags
-                                                                   (random-plush-genome
-                                                                    max-genome-size-in-initial-program
-                                                                    atom-generators
-                                                                    argmap))
-                                                           :plushy (random-plushy-genome
-                                                                    (* 1.165
-                                                                       max-genome-size-in-initial-program)
-                                                                    atom-generators
-                                                                    argmap))
-                                                 :genetic-operators :random)))]
-        (mapv #(if use-single-thread
-                 (atom %)
-                 (agent % :error-handler agent-error-handler))
-              population-agents))
-      (with-open [in (java.io.PushbackReader. (clojure.java.io/reader initial-population-file))]
-        (let [edn-seq (repeatedly (partial edn/read {:eof :theend :default individual-reader} in))
-              pop (doall (map #(if use-single-thread
-                         (atom %)
-                         (agent % :error-handler agent-error-handler))
-                              (let [individuals (take-while (partial not= :theend) edn-seq)]
-                                (map #(apply make-individual (mapcat identity (vec %))) individuals ))))]
-          (println pop)
-          pop))
-      ))
+(defn strip-errors [individual]
+  (dissoc individual :total-error :errors))
+
+(defn read-edn-individuals [input-reader strip-initial-errors]
+  (let [edn-seq (repeatedly (partial edn/read {:eof :theend :default individual-reader} input-reader))
+        entries (take-while (partial not= :theend) edn-seq)
+        individuals (remove nil? entries)]
+    (if strip-initial-errors
+      (map strip-errors individuals)
+      individuals)))
+
+(defn make-pop-agents
+  "Makes the population of agents containing the initial random individuals in the population.
+   Argument is a push argmap"
+  [{:keys [use-single-thread population-size
+           max-genome-size-in-initial-program
+           atom-generators genome-representation
+           initial-population-file strip-initial-errors]
+    :as argmap}]
+  (if (nil? initial-population-file)
+    (let [population-agents (vec (repeatedly population-size
+                                             #(make-individual
+                                               :genome (case genome-representation
+                                                         :plush (strip-random-insertion-flags
+                                                                 (random-plush-genome
+                                                                  max-genome-size-in-initial-program
+                                                                  atom-generators
+                                                                  argmap))
+                                                         :plushy (random-plushy-genome
+                                                                  (* 1.165
+                                                                     max-genome-size-in-initial-program)
+                                                                  atom-generators
+                                                                  argmap))
+                                               :genetic-operators :random)))]
+      (mapv #(if use-single-thread
+               (atom %)
+               (agent % :error-handler agent-error-handler))
+            population-agents))
+    (with-open [in (java.io.PushbackReader. (clojure.java.io/reader initial-population-file))]
+      (let [individuals (read-edn-individuals in strip-initial-errors)
+            pop (doall (map #(if use-single-thread
+                       (atom %)
+                       (agent % :error-handler agent-error-handler))
+                              (map #(apply make-individual (mapcat identity (vec %))) individuals )))]
+        (println pop)
+        pop))
+    ))
 
 (defn make-child-agents
   "Makes the population of agents containing the initial random individuals in the population.

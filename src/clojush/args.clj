@@ -557,6 +557,12 @@
           :initial-population-file nil
           ;; the file to get initial generation from
 
+          :strip-initial-errors false
+          ;; if this is true, then the :total-error and :errors
+          ;; fields are removed from each individual when the initial
+          ;; population is read in. Otherwise they are left along and
+          ;; assumed to be meaningful.
+
           )))
 
 (defn augment-for-autoconstruction
